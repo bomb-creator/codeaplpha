@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any, Dict
 
 import requests
+from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -23,7 +25,7 @@ def _geocode_city(city: str) -> Location:
     response = requests.get(
         GEOCODE_URL,
         params={"name": city, "count": 1, "language": "en", "format": "json"},
-        timeout=20,
+        timeout=60,
     )
     response.raise_for_status()
     results = response.json().get("results")
@@ -51,29 +53,31 @@ def _format_weather(location: Location, weather: Dict[str, Any]) -> str:
     )
 
 
-def run_agent(city: str) -> str:
+async def run_agent(city: str) -> str:
     location = _geocode_city(city)
     server_params = StdioServerParameters(
         command="python",
         args=["app/weather_mcp_server.py"],
     )
-    with stdio_client(server_params) as (read, write):
-        response = write.call_tool(
-            "get_weather",
-            {"latitude": location.latitude, "longitude": location.longitude},
-        )
-    if response.is_error:
-        raise RuntimeError(response.error)
-    weather_data = json.loads(response.content[0].text)
-    return _format_weather(location, weather_data)
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            response = await session.call_tool(
+                "get_weather",
+                {"latitude": location.latitude, "longitude": location.longitude},
+            )
+            if response.isError:
+                raise RuntimeError(response.error)
+            weather_data = json.loads(response.content[0].text)
+            return _format_weather(location, weather_data)
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser(description="MCP weather agent CLI")
     parser.add_argument("--city", required=True, help="City name to look up")
     args = parser.parse_args()
-    print(run_agent(args.city))
+    print(await run_agent(args.city))
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

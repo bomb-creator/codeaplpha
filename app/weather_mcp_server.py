@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import requests
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -25,7 +25,7 @@ def _fetch_weather(latitude: float, longitude: float) -> Dict[str, Any]:
             ],
             "timezone": "auto",
         },
-        timeout=20,
+        timeout=60,
     )
     response.raise_for_status()
     payload = response.json()
